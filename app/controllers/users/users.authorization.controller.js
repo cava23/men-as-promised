@@ -22,11 +22,9 @@ exports.isOrgScoped = function(req, res, next) {
 		.then(next)
 		.catch(function(err) {
 			if (err instanceof errors.NotAuthorizedError) {
-				var error = new errors.NotAuthorizedError('Org is not authorized to access this user');
-				log.error(error);
-				errors.returnError(res, error);
+				next(new errors.NotAuthorizedError('Org is not authorized to access this user'));
 			} else {
-				return next(err);
+				next(err);
 			}
 		});
 };

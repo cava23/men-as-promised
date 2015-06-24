@@ -40,11 +40,11 @@ exports.updateMe = function(req, res) {
 
 		user.save(function(err) {
 			if (err) {
-				return errors.returnError(res, new errors.BadRequestError(errors.getErrorMessage(err)));
+				throw new errors.BadRequestError(errors.getErrorMessage(err));
 			} else {
 				req.login(user, function(err) {
 					if (err) {
-						errors.returnError(res, new errors.BadRequestError(errors.getErrorMessage(err)));
+						throw new errors.BadRequestError(errors.getErrorMessage(err));
 					} else {
 						res.sendResult(user);
 					}
@@ -52,7 +52,7 @@ exports.updateMe = function(req, res) {
 			}
 		});
 	} else {
-		errors.returnError(res, new errors.BadRequestError("User is not signed in"));
+		throw new errors.BadRequestError("User is not signed in");
 	}
 };
 
@@ -61,4 +61,18 @@ exports.updateMe = function(req, res) {
  */
 exports.me = function(req, res) {
 	res.sendResult(req.user || null);
+};
+
+/**
+ * Send feedback
+ */
+exports.sendFeedback = function(req, res) {
+	if (!req.body || !req.body.message) {
+		throw new errors.BadRequestError("Please include a message");
+	}
+
+	req.getServiceManager().getEmailService().sendFeedback(req.user, req.body.message)
+		.then(function() {
+			res.sendResult({});
+		});
 };

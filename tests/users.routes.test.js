@@ -6,15 +6,16 @@ var should = require('should'),
     common = require('./common'),
     agent = request.agent(app),
     api = require('./api-utils'),
+    orgFixture = require('./fixtures/organizationFixture'),
     constants = require('../config/constants');
 
 var adminCreds;
 
-describe('Orgs', function() {
+describe('Orgs and Users', function() {
 
     beforeEach(function() {
         adminCreds = {
-            username: 'myName',
+            username: 'andrew_admin',
             password: 'password'
         };
     });
@@ -24,14 +25,7 @@ describe('Orgs', function() {
     });
 
     function createOrg(orgName) {
-        var data = {
-            firstName: 'Full',
-            lastName: 'Name',
-            email: 'test@test.com',
-            orgName: orgName || common.orgName,
-            adminUsername: adminCreds.username,
-            adminPassword: adminCreds.password
-        };
+        var data = orgFixture.buildOrg(orgName, adminCreds);
 
         return api.signup(agent, data)
             .then(function(res) {
@@ -78,7 +72,8 @@ describe('Orgs', function() {
             .then(function(res) {
                 common.checkApiSuccess(res);
                 shouldHaveRole(res, constants.ROLE_ORG_ADMIN);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
+                shouldHaveRole(res, constants.ROLE_SHOP);
                 return api.listParts(agent);
             })
             .then(function(res) {
@@ -86,40 +81,130 @@ describe('Orgs', function() {
             });
     });
 
-    it('should add a user to org with user role', function() {
+    it('should create an org and log in with different case', function() {
+        return createOrg()
+            .then(function(res) {
+                // should be logged in and have zero parts
+                return api.listParts(agent);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.length(0);
+                // check that the currently logged in user is admin
+                return checkLoggedInAsAdmin();
+            })
+            .then(function(res) {
+                // log out and back in with admin credentials
+                return api.signout(agent);
+            })
+            .then(function(res) {
+                // TODO: verify we're logged out?
+                adminCreds.username = "ANDREW_ADMIN";
+                return api.signin(agent, adminCreds);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                shouldHaveRole(res, constants.ROLE_ORG_ADMIN);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
+                shouldHaveRole(res, constants.ROLE_SHOP);
+                return api.listParts(agent);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+            });
+    });
+
+    it('should return error if username is already taken', function() {
+        return createOrg()
+            .then(function(res) {
+                // change the case
+                adminCreds.username = adminCreds.username.toUpperCase();
+                var data = orgFixture.buildOrg("org", adminCreds);
+                return api.signup(agent, data);
+            })
+            .then(function(res) {
+                common.checkApiBadRequest(res);
+                res.body.should.have.property('message', 'Username already exists');
+            });
+    });
+
+    it('should add a user to org with engineer role', function() {
         var user = {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'password',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
 
         return createOrg()
-            .then(function(res) {
+            .then(function() {
                 return api.createUser(agent, user);
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
                 res.body.result.should.not.have.property('password');
                 res.body.result.should.not.have.property('salt');
                 // make sure we're still logged in as admin
                 return checkLoggedInAsAdmin();
             })
-            .then(function(res) {
+            .then(function() {
                 // logout and back in as engineer
                 return api.signout(agent);
             })
-            .then(function(res) {
-                return api.signin(agent, {username: user.username, password: user.password});
+            .then(function() {
+                // log in using a different case
+                return api.signin(agent, {username: 'Andrew', password: user.password});
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
+                return api.listParts(agent);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.length(0);
+            });
+    });
+
+    it('should add a user to org without password', function() {
+        var user = {
+            firstName: 'Full',
+            lastName: 'Name',
+            username: 'andrew',
+            password: 'password',
+            roles: [
+                constants.ROLE_ENGINEER
+            ]
+        };
+
+        return createOrg()
+            .then(function() {
+                return api.createUser(agent, user);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
+                res.body.result.should.not.have.property('password');
+                res.body.result.should.not.have.property('salt');
+                // make sure we're still logged in as admin
+                return checkLoggedInAsAdmin();
+            })
+            .then(function() {
+                // logout and back in as engineer
+                return api.signout(agent);
+            })
+            .then(function() {
+                // log in using a different case
+                return api.signin(agent, {username: 'Andrew', password: user.password});
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
                 return api.listParts(agent);
             })
             .then(function(res) {
@@ -133,41 +218,41 @@ describe('Orgs', function() {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'password',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
         var userId;
 
         return createOrg()
-            .then(function(res) {
+            .then(function() {
                 return api.createUser(agent, user);
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
                 userId = res.body.result._id;
-                user.roles.push(constants.ROLE_ORG_ADMIN);
+                user.roles.push(constants.ROLE_SHOP);
                 return api.updateUser(agent, userId, user);
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_ORG_ADMIN);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
+                shouldHaveRole(res, constants.ROLE_SHOP);
                 res.body.result.should.not.have.property('password');
                 res.body.result.should.not.have.property('salt');
                 // log out as admin and back in as user
                 return api.signout(agent);
             })
-            .then(function(res) {
+            .then(function() {
                 return api.signin(agent, {username: user.username, password: user.password});
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_ORG_ADMIN);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
+                shouldHaveRole(res, constants.ROLE_SHOP);
             });
     });
 
@@ -176,30 +261,30 @@ describe('Orgs', function() {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'password',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
         var userId;
 
         return createOrg()
-            .then(function(res) {
+            .then(function() {
                 return api.createUser(agent, user);
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
                 userId = res.body.result._id;
                 return api.signout(agent);
             })
             .then(function() {
-                adminCreds.username = "nowWhoIsThis";
+                adminCreds.username = "chris";
                 return createOrg("org2");
             })
             .then(function() {
-                user.roles.push(constants.ROLE_USER);
+                user.roles.push(constants.ROLE_SHOP);
                 return api.updateUser(agent, userId, user);
             })
             .then(function(res) {
@@ -212,15 +297,15 @@ describe('Orgs', function() {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'password',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
 
         return createOrg()
-            .then(function(res) {
+            .then(function() {
                 return api.createUser(agent, user);
             })
             .then(function(res) {
@@ -234,7 +319,7 @@ describe('Orgs', function() {
                 // logout and try to login as deleted user
                 return api.signout(agent);
             })
-            .then(function(res) {
+            .then(function() {
                 return api.signin(agent, {username: user.username, password: user.password});
             })
             .then(function(res) {
@@ -247,16 +332,16 @@ describe('Orgs', function() {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'password',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
         var userId;
 
         return createOrg()
-            .then(function(res) {
+            .then(function() {
                 return api.createUser(agent, user);
             })
             .then(function(res) {
@@ -265,7 +350,7 @@ describe('Orgs', function() {
                 return api.signout(agent);
             })
             .then(function() {
-                adminCreds.username = "nowWhoIsThis";
+                adminCreds.username = "chris";
                 return createOrg("org2");
             })
             .then(function() {
@@ -297,10 +382,10 @@ describe('Orgs', function() {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'password',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
 
@@ -310,7 +395,7 @@ describe('Orgs', function() {
                 return api.signout(agent);
             })
             .then(function() {
-                adminCreds.username = "nowWhoIsThis";
+                adminCreds.username = "chris";
                 return createOrg();
             })
             .then(function(res) {
@@ -318,7 +403,7 @@ describe('Orgs', function() {
             })
             .then(function(res) {
                 common.checkApiSuccess(res);
-                shouldHaveRole(res, constants.ROLE_USER);
+                shouldHaveRole(res, constants.ROLE_ENGINEER);
                 // make sure we're still logged in as admin
                 return checkLoggedInAsAdmin();
             })
@@ -354,7 +439,7 @@ describe('Orgs', function() {
     it('should not be able to remove admin role from only admin user', function() {
         return createOrg()
             .then(function(res) {
-                res.body.result.roles = [constants.ROLE_USER];
+                res.body.result.roles = [constants.ROLE_ENGINEER];
                 return api.updateUser(agent, res.body.result._id, res.body.result);
             })
             .then(function(res) {
@@ -368,10 +453,10 @@ describe('Orgs', function() {
             firstName: 'Full',
             lastName: 'Name',
             email: 'test@test.com',
-            username: 'myOtherName',
-            password: 'test1234',
+            username: 'andrew',
+            password: 'testerpassword',
             roles: [
-                constants.ROLE_USER
+                constants.ROLE_ENGINEER
             ]
         };
         var passwordDetails = {
@@ -404,7 +489,7 @@ describe('Orgs', function() {
             });
     });
 
-    it('should not be able to change the password of the currently logged in user', function() {
+    it('should not be able to change the password of the currently logged in user with the admin route', function() {
         var passwordDetails = {
             newPassword: "password",
             verifyPassword: "password"

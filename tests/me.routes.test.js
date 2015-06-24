@@ -7,12 +7,13 @@ var should = require('should'),
     agent = request.agent(app),
     api = require('./api-utils');
 
-var userCreds = {
-    username: 'myName',
-    password: 'password'
-};
 
 describe('Currently logged in user routes', function() {
+    var userCreds = {
+        username: 'ben',
+        password: 'password'
+    };
+
     before(function() {
         return common.createTestOrg(agent, userCreds);
     });
@@ -181,6 +182,17 @@ describe('Currently logged in user routes', function() {
             });
     });
 
+    it.skip('should send feedback to test email', function() {
+        this.timeout(60000);
+        return common.login(agent, userCreds)
+            .then(function() {
+                return api.sendFeedback(agent, {message: 'test feedback'});
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+            });
+    });
+
     it('should return bad request if new password is not provided', function() {
         var passwordDetails = {
             currentPassword: userCreds.password
@@ -194,4 +206,5 @@ describe('Currently logged in user routes', function() {
                 common.checkApiBadRequest(res);
             });
     });
+
 });

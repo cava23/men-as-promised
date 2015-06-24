@@ -7,7 +7,6 @@ var fs = require('fs'),
 	http = require('http'),
 	https = require('https'),
 	express = require('express'),
-	logger = require('./logger'),
 	bodyParser = require('body-parser'),
 	session = require('express-session'),
 	compress = require('compression'),
@@ -15,9 +14,7 @@ var fs = require('fs'),
 	cookieParser = require('cookie-parser'),
 	helmet = require('helmet'),
 	passport = require('passport'),
-	mongoStore = require('connect-mongo')({
-		session: session
-	}),
+	mongoStore = require('connect-mongo')(session),
 	flash = require('connect-flash'),
 	config = require('./config'),
 	consolidate = require('consolidate'),
@@ -27,11 +24,15 @@ var fs = require('fs'),
     serviceManager = require('../app/services/serviceManager'),
     log = require('../app/util/logs').getLogger("Request"),
 	cacheResponseDirective = require('express-cache-response-directive'),
+	constants = require('./constants'),
 	_ = require('lodash');
 
 module.exports = function(db) {
 	// Initialize express app
 	var app = express();
+
+	// Register the app with swagger for documentation generation
+	var swagger = require("swagger-node-express").createNew(app);
 
 	// Globbing model files
 	config.getGlobbedFiles('./app/models/**/*.js').forEach(function(modelPath) {
@@ -72,10 +73,10 @@ module.exports = function(db) {
     }));
 
 	// Environment dependent middleware
-	if (process.env.NODE_ENV === 'development') {
+	if (process.env.NODE_ENV === 'local') {
 		// Disable views cache
 		app.set('view cache', false);
-	} else if (process.env.NODE_ENV === 'production') {
+	} else if (process.env.NODE_ENV === 'prod' || process.env.NODE_ENV === 'dev') {
 		app.locals.cache = 'memory';
 	} else if (process.env.NODE_ENV === 'test') {
         console.log('Using longjohn for long stack traces');
@@ -98,7 +99,7 @@ module.exports = function(db) {
 		resave: true,
 		secret: config.sessionSecret,
 		store: new mongoStore({
-			db: db.connection.db,
+			mongooseConnection: db.connection,
 			collection: config.sessionCollection
 		}),
 		cookie: config.sessionCookie,
@@ -121,13 +122,18 @@ module.exports = function(db) {
 
     // enable CORS
     app.use(cors({
-        origin: config.host,
+        origin: true,
         credentials: true
     }));
 
-    // add the service manager to the req, so controllers have access to services
+	// Add function to app so that it can be easily mocked in unit tests
+	app.getServiceManager = function() {
+		return serviceManager;
+	};
+
+	// add the service manager to the req, so controllers have access to services
     app.use(function(req, res, next) {
-        req.getServiceManager = function() { return serviceManager; };
+        req.getServiceManager = app.getServiceManager;
         next();
     });
 
@@ -138,20 +144,34 @@ module.exports = function(db) {
 	});
 
 	// API calls send results in a "result" subdocument using the res.sendResult() method
+	// Objects returned by services may also have an additional subdocument called 'meta'
 	app.use(function(req, res, next) {
 		res.sendResult = function(result) {
 			var response;
 			if (result) {
 				response = {
-					ok: true,
-					result: result
+					ok: true
 				};
 
-				if (_.isArray(result)) {
-					response.count = result.length;
+				if (result.result) {
+					response.result = result.result;
+				} else {
+					response.result = result;
 				}
 
-				res.json(response);
+				if (result.meta) {
+					response.meta = result.meta;
+				}
+
+				if (_.isArray(response.result)) {
+					response.count = response.result.length;
+				}
+
+				if ((process.env.NODE_ENV === "dev" || process.env.NODE_ENV === "local") && !req.headers[constants.HEADER_NO_DELAY]) {
+					setTimeout(function() {res.json(response);}, Math.random()*1000);
+				} else {
+					res.json(response);
+				}
 			} else {
 				next();
 			}
@@ -159,9 +179,57 @@ module.exports = function(db) {
 		next();
 	});
 
+	// Pretend to be an org
+	app.use(function(req, res, next) {
+		if (req.user && req.user.isSystemAdmin()) {
+			if (req.headers && req.headers.org) {
+				req.user.org = req.headers.org;
+			}
+		}
+		next();
+	});
+
+	// Transform query parameters
+	app.use(function(req, res, next) {
+		_.forOwn(req.query, function(value, key) {
+			if (value === 'true') {
+				req.query[key] = true;
+			} else if (value === 'false') {
+				req.query[key] = false;
+			}
+		});
+		next();
+	});
+
 	// Globbing routing files
 	config.getGlobbedFiles('./app/routes/**/*.js').forEach(function(routePath) {
-		require(path.resolve(routePath))(app);
+		require(path.resolve(routePath))(app, swagger);
+	});
+
+	// set api info
+	swagger.setApiInfo({
+		title: "API Docs",
+		description: "",
+		//termsOfServiceUrl: "http://helloreverb.com/terms/",
+		contact: "api@men-as-promised.com",
+		license: "Apache 2.0",
+		licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.html"
+	});
+
+	swagger.configureSwaggerPaths("", "api-docs", "");
+	swagger.configure(config.hostname, "0.0.1");
+
+	// Serve up swagger ui at /docs via static route
+	var docs_handler = express.static(__dirname + '/../app/swagger-ui/');
+	app.get(/^\/docs(\/.*)?$/, function(req, res, next) {
+		if (req.url === '/docs') { // express static barfs on root url w/o trailing slash
+			res.writeHead(302, { 'Location' : req.url + '/' });
+			res.end();
+			return;
+		}
+		// take off leading /docs so that connect locates file correctly
+		req.url = req.url.substr('/docs'.length);
+		return docs_handler(req, res, next);
 	});
 
 	app.use(function(err, req, res, next) {
@@ -182,24 +250,6 @@ module.exports = function(db) {
             message: "Not Found"
         });
 	});
-
-	if (process.env.NODE_ENV === 'secure') {
-		// Log SSL usage
-		console.log('Securely using https protocol');
-
-		// Load SSL key and certificate
-		var privateKey = fs.readFileSync('./config/sslcerts/key.pem', 'utf8');
-		var certificate = fs.readFileSync('./config/sslcerts/cert.pem', 'utf8');
-
-		// Create HTTPS Server
-		var httpsServer = https.createServer({
-			key: privateKey,
-			cert: certificate
-		}, app);
-
-		// Return HTTPS server instance
-		return httpsServer;
-	}
 
     // Return Express server instance
     return app;

@@ -1,11 +1,22 @@
 var qagent = require("agent-q");
+var _ = require("lodash");
 
 // Orgs
 function listOrgs(agent) {
     return qagent.end(agent.get('/api/v1/orgs'));
 }
 
-// Users
+function getCurrentOrg(agent) {
+    return qagent.end(agent.get('/api/v1/me/org'));
+}
+
+function updateCurrentOrg(agent, org) {
+    return qagent.end(agent
+        .put('/api/v1/me/org')
+        .send(org));
+}
+
+ // Users
 function signup(agent, data) {
     return qagent.end(agent
         .post('/auth/signup')
@@ -69,14 +80,33 @@ function changePasswordCurrentUser(agent, passwordDetails) {
         .send(passwordDetails));
 }
 
-// Parts
-function listParts(agent) {
-    return qagent.end(agent.get('/api/v1/parts'));
+function sendFeedback(agent, feedback) {
+    return qagent.end(agent
+        .post('/api/v1/me/feedback')
+        .send(feedback));
 }
 
-function createPart(agent, part) {
-    return qagent.end(agent
-        .post('/api/v1/parts')
+// Parts
+function listParts(agent, headers) {
+    var request = agent.get('/api/v1/parts');
+    if (headers) {
+        _.forOwn(headers, function(value, key) {
+            request.set(key, value);
+        });
+    }
+
+    return qagent.end(request);
+}
+
+function createPart(agent, part, headers) {
+    var request = agent.post('/api/v1/parts');
+    if (headers) {
+        _.forOwn(headers, function(value, key) {
+            request.set(key, value);
+        });
+    }
+
+    return qagent.end(request
         .send(part));
 }
 
@@ -95,14 +125,16 @@ function deletePart(agent, partId) {
         .delete('/api/v1/parts/' + partId));
 }
 
-
 // Health Check
 function getHealthCheck(agent) {
     return qagent.end(agent.get('/health/check'));
 }
 
+
 module.exports = {
     listOrgs: listOrgs,
+    getCurrentOrg: getCurrentOrg,
+    updateCurrentOrg: updateCurrentOrg,
     signup: signup,
     signin: signin,
     signout: signout,
@@ -115,6 +147,7 @@ module.exports = {
     getCurrentUser: getCurrentUser,
     updateCurrentUser: updateCurrentUser,
     changePasswordCurrentUser: changePasswordCurrentUser,
+    sendFeedback: sendFeedback,
     listParts: listParts,
     createPart: createPart,
     getPart: getPart,

@@ -8,6 +8,7 @@ var should = require('should'),
     api = require('./api-utils'),
     mongoose = require('mongoose-q')(),
     User = mongoose.model('User'),
+    orgFixture = require('./fixtures/organizationFixture'),
     constants = require('../config/constants');
 
 var adminCreds, systemAdmin, systemAdminCreds;
@@ -16,12 +17,12 @@ describe('Org routes', function() {
 
     beforeEach(function() {
         adminCreds = {
-            username: 'admin',
+            username: 'ben',
             password: 'password'
         };
 
         systemAdminCreds = {
-            username: 'systemAdmin',
+            username: 'andrew',
             password: 'password'
         };
 
@@ -33,7 +34,8 @@ describe('Org routes', function() {
             password: systemAdminCreds.password,
             provider: 'local',
             roles: [
-                constants.ROLE_SYSTEM_ADMIN
+                constants.ROLE_SYSTEM_ADMIN,
+                constants.ROLE_ORG_ADMIN
             ]
         };
     });
@@ -43,14 +45,7 @@ describe('Org routes', function() {
     });
 
     function createOrg(orgName) {
-        var data = {
-            firstName: 'Full',
-            lastName: 'Name',
-            email: 'test@test.com',
-            orgName: orgName || common.orgName,
-            adminUsername: adminCreds.username,
-            adminPassword: adminCreds.password
-        };
+        var data = orgFixture.buildOrg(orgName, adminCreds);
 
         return api.signup(agent, data)
             .then(function(res) {
@@ -82,6 +77,31 @@ describe('Org routes', function() {
             .then(function(res) {
                 common.checkApiSuccess(res);
                 res.body.result.should.have.length(2);
+            });
+    });
+
+    it('should be able to list all users for all orgs as system-admin', function() {
+        return createOrg()
+            .then(function() {
+                adminCreds.username = "anotherAdmin";
+                return createOrg("org2");
+            })
+            .then(function() {
+                return api.signout(agent);
+            })
+            .then(function() {
+                var user = new User(systemAdmin);
+                return user.saveQ();
+            })
+            .then(function() {
+                return api.signin(agent, systemAdminCreds);
+            })
+            .then(function(res) {
+                return api.listUsers(agent);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.length(3); // two orgs plus myself
             });
     });
 
@@ -124,6 +144,34 @@ describe('Org routes', function() {
             })
             .then(function(res) {
                 common.checkApiNotAuthorized(res);
+            });
+    });
+
+    it('should be able to get the current org', function() {
+        return createOrg('Get Current Org')
+            .then(function() {
+                return api.getCurrentOrg(agent);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.property('name', 'Get Current Org');
+            });
+    });
+
+    it('should be able to edit the current org', function() {
+        return createOrg()
+            .then(function() {
+                return api.getCurrentOrg(agent);
+            })
+            .then(function(res) {
+                var org = res.body.result;
+                org.name = 'UpdatedOrg';
+                return api.updateCurrentOrg(agent, org);
+            }).then(function() {
+                return api.getCurrentOrg(agent);
+            }).then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.property('name', 'UpdatedOrg');
             });
     });
 

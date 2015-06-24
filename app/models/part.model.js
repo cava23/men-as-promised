@@ -27,7 +27,8 @@ var PartSchema = new Schema({
 	},
 	org: {
 		type: Schema.ObjectId,
-		ref: 'Org'
+		ref: 'Org',
+		required: "Missing required field 'org'. Parts must belong to an org."
 	}
 });
 

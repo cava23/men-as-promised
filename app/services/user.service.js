@@ -1,6 +1,6 @@
 'use strict';
 
-var mongo = require('./../services/mongo.service');
+var db = require('./../services/db.service');
 var _ = require('lodash');
 var errors = require('../util/errors');
 var constants = require('../../config/constants');
@@ -9,7 +9,7 @@ var UserService = (function() {
 
     function UserService(serviceManager) {
         this.serviceManager = serviceManager;
-        this.dbUser = new mongo('User');
+        this.dbUser = new db('User');
     }
 
     UserService.prototype.getUser = function (id) {

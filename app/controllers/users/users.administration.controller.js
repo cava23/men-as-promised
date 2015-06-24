@@ -11,15 +11,20 @@ var errors = require('../../util/errors'),
  * List users for org
  */
 exports.list = function(req, res) {
-    log.debug("Handling request to list users");
+    var query = {};
 
-    req.body.org = req.user.org;
-    return req.getServiceManager().getUserService().getUsers({org: req.user.org})
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+    if (req.user.org) {
+        query.org = req.user.org;
+    }
+
+    if (!req.user.isSystemAdmin()) {
+        log.debug("Handling request to list users for org with id: " + req.user.org);
+    } else {
+        log.debug("Handling request to list users for system-admin acting as org with id: " + req.user.org);
+    }
+
+    return req.getServiceManager().getUserService().getUsers(query)
+        .then(res.sendResult);
 };
 
 /**
@@ -29,11 +34,7 @@ exports.read = function(req, res) {
     log.debug("Handling request to get user with id: " + req.params.userId);
 
     return req.getServiceManager().getUserService().getUser(req.params.userId)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
@@ -44,11 +45,7 @@ exports.create = function(req, res) {
 
     req.body.org = req.user.org;
     return req.getServiceManager().getUserService().createUser(req.body)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
@@ -58,11 +55,7 @@ exports.updateUser = function(req, res) {
     log.debug("Handling request to update user with id: " + req.params.userId);
 
     return req.getServiceManager().getUserService().updateUser(req.params.userId, req.body)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
@@ -75,11 +68,7 @@ exports.deleteUser = function(req, res) {
         throw new errors.NotAuthorizedError("You cannot delete the currently logged in user");
     } else {
         return req.getServiceManager().getUserService().deleteUser(req.params.userId)
-            .then(res.sendResult)
-            .catch(function(err) {
-                log.error(err);
-                errors.returnError(res, err);
-            });
+            .then(res.sendResult);
     }
 };
 
@@ -94,9 +83,5 @@ exports.changePassword = function(req, res) {
     }
 
     return req.getServiceManager().getUserService().changePassword(req.params.userId, req.body)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };

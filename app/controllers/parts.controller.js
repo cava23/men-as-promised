@@ -13,78 +13,65 @@ var errors = require('../util/errors'),
  * Create a new part
  */
 exports.create = function(req, res) {
-    log.debug("Creating new part");
+    log.debug("Handling request to create a new part for org with id: " + req.user.org);
     var part = req.body;
     part.org = req.user.org;
 	return req.getServiceManager().getPartService().addPart(part)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
  * Show the current part
  */
 exports.read = function(req, res) {
-    log.debug("Getting part with id: " + req.params.partId);
+    log.debug("Handling request to get part with id: " + req.params.partId);
     return req.getServiceManager().getPartService().getPart(req.params.partId)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
  * Update a part
  */
 exports.update = function(req, res) {
-    log.debug("Updating part with id: " + req.params.partId);
+    log.debug("Handling request to update part with id: " + req.params.partId);
     return req.getServiceManager().getPartService().updatePart(req.params.partId, req.body)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
  * Delete a part
  */
 exports.delete = function(req, res) {
-    log.debug("Deleting part with id: " + req.params.partId);
+    log.debug("Handling request to delete part with id: " + req.params.partId);
     return req.getServiceManager().getPartService().deletePart(req.params.partId)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
  * List of parts
  */
 exports.list = function(req, res) {
-    log.debug("Listing parts");
     var query = {};
+
+    if (req.user.org) {
+        query.org = req.user.org;
+    }
+
     if (!req.user.isSystemAdmin()) {
-        query = {org: req.user.org};
+        log.debug("Handling request to list parts for org with id: " + req.user.org);
+    } else {
+        log.debug("Handling request to list parts for system-admin acting as org with id: " + req.user.org);
     }
 
     return req.getServiceManager().getPartService().getParts(query)
-        .then(res.sendResult)
-        .catch(function(err) {
-            log.error(err);
-            errors.returnError(res, err);
-        });
+        .then(res.sendResult);
 };
 
 /**
  * Part authorization middleware
  */
 exports.isOrgScoped = function(req, res, next) {
+    // TODO: Use continuation passing to pass the request context through the promise chain
     var getter = function () {
         return req.getServiceManager().getPartService().getPart(req.params.partId);
     };
@@ -93,11 +80,9 @@ exports.isOrgScoped = function(req, res, next) {
         .then(next)
         .catch(function(err) {
             if (err instanceof errors.NotAuthorizedError) {
-                var error = new errors.NotAuthorizedError('Org is not authorized to access this part');
-                log.error(error);
-                errors.returnError(res, error);
+                next(new errors.NotAuthorizedError('Org is not authorized to access this part'));
             } else {
-                return next(err);
+                next(err);
             }
         });
 };

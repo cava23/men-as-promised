@@ -207,9 +207,5 @@ exports.changePasswordMe = function(req, res) {
 					res.sendResult(user);
 				}
 			});
-		})
-		.catch(function(err) {
-			log.error(err);
-			errors.returnError(res, err);
 		});
 };

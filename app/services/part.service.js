@@ -1,6 +1,6 @@
 'use strict';
 
-var mongo = require('./../services/mongo.service');
+var db = require('./../services/db.service');
 var _ = require('lodash');
 var config = require('../../config/config');
 var errors = require('../util/errors');
@@ -9,12 +9,11 @@ var PartService = (function() {
 
     function PartService(serviceManager) {
         this.serviceManager = serviceManager;
-        this.dbPart = new mongo('Part');
+        this.dbPart = new db('Part');
     }
 
     PartService.prototype.addPart = function (part) {
-        var self = this;
-        return self.dbPart.create(part);
+        return this.dbPart.create(part);
     };
 
     PartService.prototype.updatePart = function(partId, update) {
@@ -30,7 +29,7 @@ var PartService = (function() {
     };
 
     PartService.prototype.getPart = function(id) {
-        return this.dbPart.findById(id);
+        return this.dbPart.findById(id, {populate:[{path:'files'}]});
     };
 
     PartService.prototype.getParts = function(query) {
@@ -39,12 +38,12 @@ var PartService = (function() {
 
     PartService.prototype.deletePart = function(partId) {
         var self = this;
-        var partToDelete;
         return self.getPart(partId)
             .then(function(part) {
                 return self.dbPart.deleteMongooseObj(part);
             });
     };
+
 
     return PartService;
 

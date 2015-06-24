@@ -31,7 +31,8 @@ module.exports = function(grunt) {
                         "after",
                         "beforeEach",
                         "afterEach"
-                    ]
+                    ],
+					ignores: ["app/swagger-ui/**/*.js"]
 				}
 			}
 		},
@@ -68,7 +69,12 @@ module.exports = function(grunt) {
 		},
 		env: {
 			test: {
-				NODE_ENV: 'test'
+				NODE_ENV: 'test',
+				PRIVATE: 'true'
+			},
+			local: {
+				NODE_ENV: 'local',
+				PRIVATE: 'true'
 			},
 			secure: {
 				NODE_ENV: 'secure'
@@ -105,13 +111,10 @@ module.exports = function(grunt) {
 	});
 
 	// Default task(s).
-	grunt.registerTask('default', ['lint', 'concurrent:default']);
+	grunt.registerTask('default', ['env:local', 'lint', 'concurrent:default']);
 
 	// Debug task.
 	grunt.registerTask('debug', ['lint', 'concurrent:debug']);
-
-	// Secure task(s).
-	grunt.registerTask('secure', ['env:secure', 'lint', 'concurrent:default']);
 
 	// Lint task(s).
 	grunt.registerTask('lint', ['jshint']);
@@ -121,6 +124,4 @@ module.exports = function(grunt) {
 
 	// Test task.
 	grunt.registerTask('test', ['env:test', 'mochaTest:default']);
-
-    grunt.registerTask('jenkins', ['lint', 'env:test', 'mochaTest:jenkins']);
 };

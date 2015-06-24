@@ -1,7 +1,6 @@
 'use strict';
 
 var should = require('should'),
-    assert = require('assert'),
 	request = require('supertest-as-promised'),
 	app = require('../server'),
     mongoose = require('mongoose-q')(),
@@ -16,16 +15,17 @@ var should = require('should'),
 /**
  * Globals
  */
+var orgId;
 var part;
 var part1;
 
 var userCreds = {
-    username: 'myName',
+    username: 'ben',
     password: 'password'
 };
 
 var user1Creds = {
-    username: 'myOtherName',
+    username: 'andrew',
     password: 'password'
 };
 
@@ -47,7 +47,9 @@ describe('Part CRUD tests', function() {
 
         // Save a user to the test db and create new part
         return common.createTestOrg(agent, userCreds)
-            .then(function (newUser) {
+            .then(function (organizationid) {
+                orgId = organizationid;
+                part.org = orgId;
                 return common.createTestOrg(agent, user1Creds, "org2");
             });
     });
@@ -154,7 +156,7 @@ describe('Part CRUD tests', function() {
                 // Set assertions
                 (res.body.result._id).should.equal(partId);
                 (res.body.result.title).should.match('WHY YOU GOTTA BE SO MEAN?');
-            })
+            });
     });
 
     it('should not be able to get a list of parts if not signed in', function () {
@@ -294,13 +296,13 @@ describe('Part CRUD tests', function() {
 
     it('should list all parts for all orgs if system-admin', function() {
         var adminInfo = {
-            "firstName":"System",
-            "lastName":"Admin",
-            "email":"no-reply@yourdomain.com",
-            "username":"checkItOut",
-            "password":"test1234",
+            "firstName":"User",
+            "lastName":"Name",
+            "email":"bing@gmail.com",
+            "username":"thisusernameisjustok",
+            "password":"password",
             provider: 'local',
-            "roles":["user","system-admin"]
+            "roles":["admin","system-admin"]
         };
         var admin = new User(adminInfo);
 
@@ -321,6 +323,115 @@ describe('Part CRUD tests', function() {
             })
             .then(function() {
                 return api.listParts(agent);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.length(1);
+            });
+    });
+
+    it('should list all parts for one org using org header if system-admin', function() {
+        var adminInfo = {
+            "firstName":"User",
+            "lastName":"Name",
+            "email":"bing@gmail.com",
+            "username":"thisusernameisjustok",
+            "password":"password",
+            provider: 'local',
+            "roles":["admin","system-admin"]
+        };
+        var admin = new User(adminInfo);
+        var orgId;
+
+        return common.login(agent, userCreds)
+            .then(function () {
+                // Save a new part
+                return api.createPart(agent, part);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                orgId = res.body.result.org;
+                return common.logout(agent);
+            })
+            .then(function() {
+                return admin.saveQ();
+            })
+            .then(function() {
+                // log in as system-admin
+                return common.login(agent, adminInfo);
+            })
+            .then(function() {
+                return api.listParts(agent, {org: orgId});
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.length(1);
+            });
+    });
+
+    it('should list no parts for an org that does not exist using org header if system-admin', function() {
+        var adminInfo = {
+            "firstName":"User",
+            "lastName":"Name",
+            "email":"bing@gmail.com",
+            "username":"thisusernameisjustok",
+            "password":"password",
+            provider: 'local',
+            "roles":["admin","system-admin"]
+        };
+        var admin = new User(adminInfo);
+        var orgId;
+
+        return common.login(agent, userCreds)
+            .then(function () {
+                // Save a new part
+                return api.createPart(agent, part);
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                orgId = res.body.result.org;
+                return common.logout(agent);
+            })
+            .then(function() {
+                return admin.saveQ();
+            })
+            .then(function() {
+                // log in as system-admin
+                return common.login(agent, adminInfo);
+            })
+            .then(function() {
+                return api.listParts(agent, {org: '5560f87cedddece9d5b186b9'});
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.length(0);
+            });
+    });
+
+    it('should create a part on an orgs behalf using org header if system-admin', function() {
+        var adminInfo = {
+            "firstName":"User",
+            "lastName":"Name",
+            "email":"bing@gmail.com",
+            "username":"thisusernameisjustok",
+            "password":"password",
+            provider: 'local',
+            "roles":["admin", "engineer", "system-admin"]
+        };
+        var admin = new User(adminInfo);
+
+        return admin.saveQ()
+            .then(function() {
+                // log in as system-admin
+                return common.login(agent, adminInfo);
+            })
+            .then(function() {
+                return api.createPart(agent, part, {org: orgId});
+            })
+            .then(function(res) {
+                common.checkApiSuccess(res);
+                res.body.result.should.have.property('org', orgId);
+                return api.listParts(agent, {org: orgId});
             })
             .then(function(res) {
                 common.checkApiSuccess(res);

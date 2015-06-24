@@ -33,4 +33,4 @@ app.listen(config.port);
 exports = module.exports = app;
 
 // Logging initialization
-console.log('Men-as-Promised API started on port ' + config.port);
+console.log('Example-API started on port ' + config.port);

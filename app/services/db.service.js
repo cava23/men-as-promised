@@ -12,15 +12,17 @@ var Collection = function(schema) {
     function buildQuery(query, options) {
         options = options || {};
 
-        if(options.sort) {
+        if (options.sort) {
             query = query.sort(options.sort);
         }
 
-        if(options.populate) {
-            query = query.populate(options.populate.path, options.populate.field);
+        if (options.populate) {
+            _.forEach(options.populate, function(populateField) {
+                query = query.populate(populateField.path, populateField.field);
+            });
         }
 
-        if(options.limit) {
+        if (options.limit) {
             query = query.limit(options.limit);
         }
 
@@ -101,6 +103,39 @@ var Collection = function(schema) {
             });
     };
 
+    self.addToSet = function(obj, property, items) {
+        try {
+            _.forEach(items, function(item) {
+                obj[property].addToSet(item);
+            });
+        } catch (e) {
+            throw new errors.BadRequestError(errors.getErrorMessage(e));
+        }
+        return self.updateMongooseObj(obj);
+    };
+
+    self.removeFromSet = function(obj, property, items) {
+        // for some reason operation.stations.pull.apply doesn't work, so just loop through
+        try {
+            _.forEach(items, function(item) {
+                obj[property].pull(item);
+            });
+        } catch (e) {
+            throw new errors.BadRequestError(errors.getErrorMessage(e));
+        }
+        return self.updateMongooseObj(obj);
+    };
+
+    self.update = function(obj, options) {
+        return obj.updateQ(options)
+            .then(function() {
+                return self.model.findById(obj.id).execQ();
+            })
+            .catch(function(err) {
+                throw new errors.BadRequestError(errors.getErrorMessage(err));
+            });
+    };
+
     self.updateMongooseObj = function(obj) {
         if (obj instanceof self.model) {
             return obj.saveQ()
@@ -121,6 +156,17 @@ var Collection = function(schema) {
         } else {
             throw new errors.BadRequestError("obj is not an instance of " + schema);
         }
+    };
+
+    self.remove = function(query) {
+        return self.model.removeQ(query)
+            .catch(function(err) {
+                throw new errors.BadRequestError(errors.getErrorMessage(err));
+            });
+    };
+
+    self.populate = function(collections, field) {
+        return self.model.populate(collections, field);
     };
 };
 

@@ -46,19 +46,20 @@ var UserSchema = new Schema({
 		type: String,
 		trim: true,
 		default: '',
-		validate: [validateLocalStrategyProperty, 'Please provide your email'],
 		match: [/.+\@.+\..+/, 'Please provide a valid email address']
 	},
 	username: {
 		type: String,
-		unique: 'Username already exists',
+		index : {
+			unique:true
+		},
 		required: 'Please provide a username',
 		trim: true
 	},
 	password: {
 		type: String,
 		default: '',
-		validate: [validateLocalStrategyPassword, 'Password must be longer']
+		validate: [validateLocalStrategyPassword, 'Password must be at least 7 characters long']
 	},
 	salt: {
 		type: String
@@ -100,9 +101,12 @@ var UserSchema = new Schema({
  */
 UserSchema.pre('save', function(next) {
 	if (this.password && this.password.length > 6) {
-		this.salt = new Buffer(crypto.randomBytes(16).toString('base64'), 'base64');
+		this.salt = crypto.randomBytes(16).toString('base64');
 		this.password = this.hashPassword(this.password);
 	}
+
+	// TODO: what about non-US characters?
+	this.username = this.username.toLowerCase();
 
 	next();
 });
@@ -112,7 +116,7 @@ UserSchema.pre('save', function(next) {
  */
 UserSchema.methods.hashPassword = function(password) {
 	if (this.salt && password) {
-		return crypto.pbkdf2Sync(password, this.salt, 10000, 64).toString('base64');
+		return crypto.pbkdf2Sync(password, new Buffer(this.salt, 'base64'), 10000, 64).toString('base64');
 	} else {
 		// Should we fail here?
 		return password;
@@ -130,7 +134,7 @@ UserSchema.methods.authenticate = function(password) {
  * Create instance method for checking system admin user
  */
 UserSchema.methods.isSystemAdmin = function() {
-    return this.roles.indexOf(constants.ROLE_SYSTEM_ADMIN) != -1;
+    return this.roles.indexOf(constants.ROLE_SYSTEM_ADMIN) > -1;
 };
 
 /**
@@ -138,7 +142,7 @@ UserSchema.methods.isSystemAdmin = function() {
  */
 UserSchema.statics.findUniqueUsername = function(username, suffix, callback) {
 	var _this = this;
-	var possibleUsername = username + (suffix || '');
+	var possibleUsername = username.toLowerCase() + (suffix || '');
 
 	_this.findOne({
 		username: possibleUsername
